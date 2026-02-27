@@ -135,17 +135,24 @@ _arrow_select() {
 
     # Draw menu from current cursor position.
     # Each line starts with \033[2K (erase line) so redraws are clean.
+    # Items 0-8 (displayed as 1-9) get a number key shortcut.
     _print_menu() {
-        local i name image status
+        local i name image status numkey
         for (( i=0; i<count; i++ )); do
             name=$(  awk -F'\t' '{print $2}' <<< "${lines[$i]}")
             image=$( awk -F'\t' '{print $3}' <<< "${lines[$i]}")
             status=$(awk -F'\t' '{print $4}' <<< "${lines[$i]}")
+            # Show digit for first 9 items, blank space for the rest
+            if (( i < 9 )); then
+                numkey="${CYAN}$((i+1))${NC}"
+            else
+                numkey=" "
+            fi
             if (( i == selected )); then
-                printf '\033[2K  '"${GREEN}"'▶ %-30s'"${NC}  ${DIM}"'%-35s  %s'"${NC}"'\n' \
+                printf '\033[2K '"${numkey} ${GREEN}"'▶ %-30s'"${NC}  ${DIM}"'%-35s  %s'"${NC}"'\n' \
                     "$name" "$image" "$status" >&2
             else
-                printf '\033[2K    %-30s  '"${DIM}"'%-35s  %s'"${NC}"'\n' \
+                printf '\033[2K '"${numkey}"'   %-30s  '"${DIM}"'%-35s  %s'"${NC}"'\n' \
                     "$name" "$image" "$status" >&2
             fi
         done
@@ -154,7 +161,7 @@ _arrow_select() {
     # Hide cursor while drawing
     printf '\033[?25l' >&2
 
-    printf "${BOLD}%s${NC} (↑/↓ to move, Enter to select, q to quit):\n" \
+    printf "${BOLD}%s${NC} (↑/↓ or 1-9 to select, Enter to confirm, q to quit):\n" \
         "$prompt" >&2
 
     # Save cursor position immediately before the menu rows.
@@ -174,6 +181,16 @@ _arrow_select() {
                         A) (( selected > 0        )) && (( selected-- )) ;;
                         B) (( selected < count-1  )) && (( selected++ )) ;;
                     esac
+                fi
+                ;;
+            [1-9])
+                local idx=$(( key - 1 ))
+                if (( idx < count )); then
+                    selected=$idx
+                    # Immediate selection — redraw to highlight chosen row, then exit
+                    printf '\033[u' >&2
+                    _print_menu
+                    break
                 fi
                 ;;
             '') # Enter
