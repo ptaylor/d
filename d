@@ -133,33 +133,34 @@ _arrow_select() {
     local count=${#lines[@]}
     local selected=0
 
-    # Build display labels (truncate long lines for readability)
+    # Draw menu from current cursor position.
+    # Each line starts with \033[2K (erase line) so redraws are clean.
     _print_menu() {
-        local i label
+        local i name image status
         for (( i=0; i<count; i++ )); do
-            label="${lines[$i]}"
-            # Reformat: highlight name (col 2)
-            local id name image status
-            id=$(   awk -F'\t' '{print $1}' <<< "$label")
-            name=$( awk -F'\t' '{print $2}' <<< "$label")
-            image=$(awk -F'\t' '{print $3}' <<< "$label")
-            status=$(awk -F'\t' '{print $4}' <<< "$label")
+            name=$(  awk -F'\t' '{print $2}' <<< "${lines[$i]}")
+            image=$( awk -F'\t' '{print $3}' <<< "${lines[$i]}")
+            status=$(awk -F'\t' '{print $4}' <<< "${lines[$i]}")
             if (( i == selected )); then
-                printf "  ${GREEN}▶ %-30s${NC}  ${DIM}%-35s  %s${NC}\n" \
+                printf '\033[2K  '"${GREEN}"'▶ %-30s'"${NC}  ${DIM}"'%-35s  %s'"${NC}"'\n' \
                     "$name" "$image" "$status" >&2
             else
-                printf "    %-30s  ${DIM}%-35s  %s${NC}\n" \
+                printf '\033[2K    %-30s  '"${DIM}"'%-35s  %s'"${NC}"'\n' \
                     "$name" "$image" "$status" >&2
             fi
         done
     }
 
-    # Hide cursor
-    tput civis 2>/dev/null || true
+    # Hide cursor while drawing
+    printf '\033[?25l' >&2
 
-    echo -e "${BOLD}${prompt}${NC} (↑/↓ to move, Enter to select, q to quit):" >&2
+    printf "${BOLD}%s${NC} (↑/↓ to move, Enter to select, q to quit):\n" \
+        "$prompt" >&2
+
+    # Save cursor position immediately before the menu rows.
+    # \033[s saves; \033[u restores — works in iTerm2, Terminal.app, xterm.
+    printf '\033[s' >&2
     _print_menu
-    tput cuu "$count" 2>/dev/null >&2
 
     local key
     while true; do
@@ -170,8 +171,8 @@ _arrow_select() {
                 if [[ "$key" == '[' ]]; then
                     IFS= read -rsn1 -t 0.1 key </dev/tty || true
                     case "$key" in
-                        A) (( selected > 0           )) && (( selected-- )) ;;
-                        B) (( selected < count-1     )) && (( selected++ )) ;;
+                        A) (( selected > 0        )) && (( selected-- )) ;;
+                        B) (( selected < count-1  )) && (( selected++ )) ;;
                     esac
                 fi
                 ;;
@@ -179,23 +180,20 @@ _arrow_select() {
                 break
                 ;;
             q|Q)
-                tput cud "$count" 2>/dev/null >&2
-                tput cnorm 2>/dev/null || true
-                echo "" >&2
-                echo -e "${YELLOW}Cancelled.${NC}" >&2
+                # Restore, clear to end of screen, show cursor, print message
+                printf '\033[u\033[J\033[?25h' >&2
+                printf "${YELLOW}Cancelled.${NC}\n" >&2
                 exit 0
                 ;;
         esac
 
-        # Redraw
-        tput ed 2>/dev/null >&2 || true
+        # Restore cursor to top of menu and redraw in place
+        printf '\033[u' >&2
         _print_menu
-        tput cuu "$count" 2>/dev/null >&2
     done
 
-    tput cud "$count" 2>/dev/null >&2
-    tput cnorm 2>/dev/null || true
-    echo "" >&2
+    # Move past the menu, show cursor
+    printf '\033[u\033[J\033[?25h' >&2
 
     # Return the raw line (ID is first field)
     echo "${lines[$selected]}"
