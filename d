@@ -167,9 +167,9 @@ _arrow_select() {
         IFS= read -rsn1 key </dev/tty
         case "$key" in
             $'\x1b')
-                IFS= read -rsn1 -t 0.1 key </dev/tty || true
+                IFS= read -rsn1 -t 1 key </dev/tty || true
                 if [[ "$key" == '[' ]]; then
-                    IFS= read -rsn1 -t 0.1 key </dev/tty || true
+                    IFS= read -rsn1 -t 1 key </dev/tty || true
                     case "$key" in
                         A) (( selected > 0        )) && (( selected-- )) ;;
                         B) (( selected < count-1  )) && (( selected++ )) ;;
