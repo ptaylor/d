@@ -199,7 +199,6 @@ _arrow_select() {
             q|Q)
                 # Restore, clear to end of screen, show cursor, print message
                 printf '\033[u\033[J\033[?25h' >&2
-                printf "${YELLOW}Cancelled.${NC}\n" >&2
                 exit 0
                 ;;
         esac
@@ -212,14 +211,17 @@ _arrow_select() {
     # Move past the menu, show cursor
     printf '\033[u\033[J\033[?25h' >&2
 
-    # Return the raw line (ID is first field)
-    echo "${lines[$selected]}"
+    # Store result in global — avoids subshell so exit 0 above reaches the script
+    _SELECT_RESULT="${lines[$selected]}"
 }
 
 # Select exactly one container from matches.
 # If only one match, returns it directly.
 # If multiple, prompts interactively.
 # Prints the selected raw line to stdout.
+# Global used by _select_one / _arrow_select to avoid subshell exit-trap issues.
+_SELECT_RESULT=''
+
 _select_one() {
     local pattern="$1"
     local matches="$2"
@@ -228,7 +230,7 @@ _select_one() {
     count=$(echo "$matches" | grep -c . || echo 0)
 
     if (( count == 1 )); then
-        echo "$matches"
+        _SELECT_RESULT="$matches"
         return
     fi
 
@@ -248,13 +250,11 @@ _select_one() {
                 --no-multi \
                 --ansi \
                 2>/dev/tty
-        ) || {
-            echo -e "${YELLOW}Cancelled.${NC}" >&2
-            exit 0
-        }
-        echo "$selected"
+        ) || exit 0   # fzf cancelled — exit cleanly
+        _SELECT_RESULT="$selected"
     else
         _arrow_select "$matches" "Multiple containers match '${pattern}'"
+        # _SELECT_RESULT set by _arrow_select (or script exited on cancel)
     fi
 }
 
@@ -301,7 +301,7 @@ cmd_logs() {
     _require_matches "$pattern" "$matches"
 
     local line id name
-    line=$(_select_one "$pattern" "$matches")
+    _select_one "$pattern" "$matches"; line="$_SELECT_RESULT"
     id=$(_id_of "$line")
     name=$(_name_of "$line")
 
@@ -318,7 +318,7 @@ cmd_shell() {
     _require_matches "$pattern" "$matches"
 
     local line id name
-    line=$(_select_one "$pattern" "$matches")
+    _select_one "$pattern" "$matches"; line="$_SELECT_RESULT"
     id=$(_id_of "$line")
     name=$(_name_of "$line")
 
@@ -339,7 +339,7 @@ cmd_exec() {
     _require_matches "$pattern" "$matches"
 
     local line id name
-    line=$(_select_one "$pattern" "$matches")
+    _select_one "$pattern" "$matches"; line="$_SELECT_RESULT"
     id=$(_id_of "$line")
     name=$(_name_of "$line")
 
@@ -356,7 +356,7 @@ cmd_env() {
     _require_matches "$pattern" "$matches"
 
     local line id name
-    line=$(_select_one "$pattern" "$matches")
+    _select_one "$pattern" "$matches"; line="$_SELECT_RESULT"
     id=$(_id_of "$line")
     name=$(_name_of "$line")
 
@@ -373,7 +373,7 @@ cmd_inspect() {
     _require_matches "$pattern" "$matches"
 
     local line id name
-    line=$(_select_one "$pattern" "$matches")
+    _select_one "$pattern" "$matches"; line="$_SELECT_RESULT"
     id=$(_id_of "$line")
     name=$(_name_of "$line")
 
