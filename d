@@ -268,6 +268,10 @@ _name_of() {
     awk -F'\t' '{print $2}' <<< "$1"
 }
 
+_trace() {
+    echo -e "${DIM}+${NC} $*" >&2
+}
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -275,9 +279,11 @@ _name_of() {
 cmd_ps() {
     local pattern="${1:-}"
     if [[ -n "$pattern" ]]; then
+        _trace docker ps "$pattern"
         docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" \
             | { IFS= read -r header; echo "$header"; grep -i "$pattern" || true; }
     else
+        _trace docker ps
         docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
     fi
 }
@@ -285,9 +291,11 @@ cmd_ps() {
 cmd_psa() {
     local pattern="${1:-}"
     if [[ -n "$pattern" ]]; then
+        _trace docker ps -a "$pattern"
         docker ps -a --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" \
             | { IFS= read -r header; echo "$header"; grep -i "$pattern" || true; }
     else
+        _trace docker ps -a
         docker ps -a --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
     fi
 }
@@ -306,7 +314,13 @@ cmd_logs() {
     name=$(_name_of "$line")
 
     echo -e "${CYAN}→${NC} Logs for ${BOLD}${name}${NC} (${DIM}${id}${NC})" >&2
-    exec docker logs -f "$id"
+    if [[ -t 1 ]]; then
+        _trace docker logs -f "$name"
+        exec docker logs -f "$id"
+    else
+        _trace docker logs "$name"
+        exec docker logs "$id"
+    fi
 }
 
 cmd_shell() {
@@ -323,6 +337,7 @@ cmd_shell() {
     name=$(_name_of "$line")
 
     echo -e "${CYAN}→${NC} Shell in ${BOLD}${name}${NC} (${DIM}${id}${NC})" >&2
+    _trace docker exec -it "$name" bash
     docker exec -it "$id" bash 2>/dev/null \
         || docker exec -it "$id" sh 2>/dev/null \
         || { echo -e "${RED}error:${NC} Could not start bash or sh in container." >&2; exit 1; }
@@ -344,6 +359,7 @@ cmd_exec() {
     name=$(_name_of "$line")
 
     echo -e "${CYAN}→${NC} Exec in ${BOLD}${name}${NC} (${DIM}${id}${NC}): $*" >&2
+    _trace docker exec -it "$name" "$@"
     exec docker exec -it "$id" "$@"
 }
 
@@ -361,6 +377,7 @@ cmd_env() {
     name=$(_name_of "$line")
 
     echo -e "${CYAN}→${NC} Environment for ${BOLD}${name}${NC} (${DIM}${id}${NC}):" >&2
+    _trace docker inspect --format "'{{range .Config.Env}}{{println .}}{{end}}'" "$name"
     docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | sort
 }
 
@@ -378,6 +395,7 @@ cmd_inspect() {
     name=$(_name_of "$line")
 
     echo -e "${CYAN}→${NC} Inspecting ${BOLD}${name}${NC} (${DIM}${id}${NC})" >&2
+    _trace docker inspect "$name"
     docker inspect "$id"
 }
 
@@ -405,6 +423,7 @@ _run_on_all() {
         id=$(_id_of "$line")
         name=$(_name_of "$line")
         printf "  %-30s  %s\n" "$name" "$id" >&2
+        _trace docker "$docker_cmd" "${extra_args[@]+"${extra_args[@]}"}" "$name"
         docker "$docker_cmd" "${extra_args[@]+"${extra_args[@]}"}" "$id"
     done <<< "$matches"
 }
@@ -449,6 +468,7 @@ cmd_rm() {
         id=$(_id_of "$line")
         name=$(_name_of "$line")
         printf "  %-30s  %s\n" "$name" "$id" >&2
+        _trace docker rm -f "$name"
         docker rm -f "$id"
     done <<< "$matches"
 }
@@ -464,8 +484,14 @@ cmd_stats() {
         while IFS= read -r line; do
             [[ -n "$line" ]] && ids+=("$(_id_of "$line")")
         done <<< "$matches"
+        local -a names=()
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && names+=("$(_name_of "$line")")
+        done <<< "$matches"
+        _trace docker stats "${names[@]}"
         exec docker stats "${ids[@]}"
     else
+        _trace docker stats
         exec docker stats
     fi
 }
